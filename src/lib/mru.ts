@@ -1,3 +1,5 @@
+import type { PlotFunction, PlotPoint } from './plot'
+
 export type PositionMode = 'endpoints' | 'delta'
 export type TimeMode = 'endpoints' | 'delta'
 
@@ -165,28 +167,50 @@ export function checkMruConstraints(values: Record<string, number>): string[] {
   return violations
 }
 
-export interface MruTrajectoryPoint {
-  t: number
-  x: number
+function resolveT0Tf(timeMode: TimeMode, values: Record<string, number>): [number, number] {
+  const t0 = timeMode === 'endpoints' ? values.t0 : 0
+  const tf = timeMode === 'endpoints' ? values.tf : values.dt
+  return [t0, tf]
 }
 
 /**
- * Builds the two endpoints of the (linear) x(t) trajectory from a fully-solved
- * value set. Whichever axis is only known as a delta (posMode/timeMode === 'delta')
- * has no absolute origin, so it's plotted starting from 0.
+ * The two physically meaningful endpoints of the x(t) line (for dots/projections).
+ * Whichever axis is only known as a delta (posMode/timeMode === 'delta') has no
+ * absolute origin, so it's plotted starting from 0.
  */
-export function mruTrajectory(
-  posMode: PositionMode,
-  timeMode: TimeMode,
-  values: Record<string, number>,
-): MruTrajectoryPoint[] {
+export function mruMarkers(posMode: PositionMode, timeMode: TimeMode, values: Record<string, number>): PlotPoint[] {
   const x0 = posMode === 'endpoints' ? values.x0 : 0
   const xf = posMode === 'endpoints' ? values.xf : values.dx
-  const t0 = timeMode === 'endpoints' ? values.t0 : 0
-  const tf = timeMode === 'endpoints' ? values.tf : values.dt
+  const [t0, tf] = resolveT0Tf(timeMode, values)
 
   return [
     { t: t0, x: x0 },
     { t: tf, x: xf },
   ]
+}
+
+/** x(t) = x0 + v·(t − t0). */
+export function mruPositionPlot(
+  posMode: PositionMode,
+  timeMode: TimeMode,
+  values: Record<string, number>,
+): PlotFunction {
+  const x0 = posMode === 'endpoints' ? values.x0 : 0
+  const [t0, tf] = resolveT0Tf(timeMode, values)
+  return { fn: (t) => x0 + values.v * (t - t0), domain: [t0, tf] }
+}
+
+/** The two endpoints of the (constant) v(t) line. */
+export function mruVelocityMarkers(timeMode: TimeMode, values: Record<string, number>): PlotPoint[] {
+  const [t0, tf] = resolveT0Tf(timeMode, values)
+  return [
+    { t: t0, x: values.v },
+    { t: tf, x: values.v },
+  ]
+}
+
+/** v(t) = v, constant throughout the movement. */
+export function mruVelocityPlot(timeMode: TimeMode, values: Record<string, number>): PlotFunction {
+  const [t0, tf] = resolveT0Tf(timeMode, values)
+  return { fn: () => values.v, domain: [t0, tf] }
 }

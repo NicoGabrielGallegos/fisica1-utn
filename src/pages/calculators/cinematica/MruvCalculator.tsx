@@ -3,18 +3,24 @@ import { useState } from 'react'
 import { InlineMath } from 'react-katex'
 import FunctionChart from '../../../components/FunctionChart'
 import {
-  activeMruFields,
-  checkMruConstraints,
-  getMruFormulaTemplate,
-  mruMarkers,
-  mruPositionPlot,
-  mruVelocityMarkers,
-  mruVelocityPlot,
-  renderMruFormula,
-  solveMru,
+  activeMruvFields,
+  checkMruvConstraints,
+  checkMruvSingleConsistency,
+  FIELD_TO_CANONICAL,
+  getMruvFormulaTemplate,
+  getMruvSystemEquations,
+  mruvAccelerationMarkers,
+  mruvAccelerationPlot,
+  mruvMarkers,
+  mruvPositionPlot,
+  mruvVelocityMarkers,
+  mruvVelocityPlot,
+  renderMruvFormula,
+  solveMruvMulti,
   type PositionMode,
   type TimeMode,
-} from '../../../lib/mru'
+  type VelocityMode,
+} from '../../../lib/mruv'
 import { FIELD_UNIT_KIND, fromSI, SI_UNIT, toSI, UNIT_OPTIONS, unitToLatex } from '../../../lib/units'
 
 const FIELD_LABELS: Record<string, string> = {
@@ -24,7 +30,10 @@ const FIELD_LABELS: Record<string, string> = {
   t0: 'Tiempo inicial',
   tf: 'Tiempo final',
   dt: 'Tiempo transcurrido',
-  v: 'Velocidad',
+  v0: 'Velocidad inicial',
+  vf: 'Velocidad final',
+  dv: 'Variación de velocidad',
+  a: 'Aceleración',
 }
 
 /** Plain-text symbols, used only for aria-labels (accessibility, not rendering). */
@@ -35,7 +44,10 @@ const FIELD_SYMBOLS_PLAIN: Record<string, string> = {
   t0: 't0',
   tf: 'tf',
   dt: 'Δt',
-  v: 'v',
+  v0: 'v0',
+  vf: 'vf',
+  dv: 'Δv',
+  a: 'a',
 }
 
 /** LaTeX symbols, rendered with KaTeX. */
@@ -46,7 +58,10 @@ const FIELD_SYMBOLS_TEX: Record<string, string> = {
   t0: 't_0',
   tf: 't_f',
   dt: '\\Delta t',
-  v: 'v',
+  v0: 'v_0',
+  vf: 'v_f',
+  dv: '\\Delta v',
+  a: 'a',
 }
 
 /** LaTeX units (\text mode), rendered with KaTeX. */
@@ -57,7 +72,10 @@ const FIELD_UNITS_TEX: Record<string, string> = {
   t0: '\\text{s}',
   tf: '\\text{s}',
   dt: '\\text{s}',
-  v: '\\text{m/s}',
+  v0: '\\text{m/s}',
+  vf: '\\text{m/s}',
+  dv: '\\text{m/s}',
+  a: '\\text{m/s}^2',
 }
 
 function formatNumber(value: number, decimals = 4): string {
@@ -71,7 +89,7 @@ function formatSubstitutedNumber(value: number): string {
   return value < 0 ? `(${formatted})` : formatted
 }
 
-/** Renders a message that may contain @field@ placeholders as mixed text + InlineMath (see MruConstraint). */
+/** Renders a message that may contain @field@ placeholders as mixed text + InlineMath (see MruvConstraint). */
 function renderMixedMessage(template: string): ReactNode {
   return template.split(/(@\w+@)/g).map((part, index) => {
     const match = /^@(\w+)@$/.exec(part)
@@ -116,26 +134,27 @@ function ModeToggle<T extends string>({
   )
 }
 
-function TargetPicker({
+/** Multi-select (up to 2) chip picker for "which variables don't you know". */
+function UnknownPicker({
   fields,
   selected,
-  onSelect,
+  onToggle,
 }: {
   fields: string[]
-  selected: string | null
-  onSelect: (field: string) => void
+  selected: string[]
+  onToggle: (field: string) => void
 }) {
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Variable a calcular">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Variables desconocidas">
       {fields.map((field) => {
-        const isSelected = field === selected
+        const isSelected = selected.includes(field)
         return (
           <button
             key={field}
             type="button"
-            role="radio"
+            role="checkbox"
             aria-checked={isSelected}
-            onClick={() => onSelect(field)}
+            onClick={() => onToggle(field)}
             className={`rounded-md border px-3 py-2 text-sm transition ${
               isSelected
                 ? 'border-sky-600 bg-sky-600 text-white'
@@ -217,16 +236,17 @@ function FieldInput({
   )
 }
 
-export default function MruCalculator() {
+export default function MruvCalculator() {
   const [posMode, setPosMode] = useState<PositionMode>('endpoints')
   const [timeMode, setTimeMode] = useState<TimeMode>('endpoints')
-  const [unknown, setUnknown] = useState<string | null>(null)
+  const [velMode, setVelMode] = useState<VelocityMode>('endpoints')
+  const [unknowns, setUnknowns] = useState<string[]>([])
   const [values, setValues] = useState<Record<string, string>>({})
   const [unitByField, setUnitByField] = useState<Record<string, string>>({})
   const [decimals, setDecimals] = useState(2)
 
-  const activeFields = activeMruFields(posMode, timeMode)
-  const inputFields = activeFields.filter((field) => field !== unknown)
+  const activeFields = activeMruvFields(posMode, timeMode, velMode)
+  const inputFields = activeFields.filter((field) => !unknowns.includes(field))
 
   function getFieldUnit(field: string): string {
     return unitByField[field] ?? SI_UNIT[FIELD_UNIT_KIND[field]]
@@ -236,16 +256,38 @@ export default function MruCalculator() {
     setUnitByField((current) => ({ ...current, [field]: unit }))
   }
 
+  function resetSelection() {
+    setUnknowns([])
+    setValues({})
+  }
+
   function handlePosModeChange(mode: PositionMode) {
     setPosMode(mode)
-    setUnknown(null)
-    setValues({})
+    resetSelection()
   }
 
   function handleTimeModeChange(mode: TimeMode) {
     setTimeMode(mode)
-    setUnknown(null)
-    setValues({})
+    resetSelection()
+  }
+
+  function handleVelModeChange(mode: VelocityMode) {
+    setVelMode(mode)
+    resetSelection()
+  }
+
+  function toggleUnknown(field: string) {
+    setUnknowns((current) => {
+      if (current.includes(field)) {
+        return current.filter((f) => f !== field)
+      }
+      // At most one field per canonical quantity (e.g. x0 and xf both mean
+      // "Δx"), and at most 2 total — adding a 3rd bumps the oldest pick.
+      const canonical = FIELD_TO_CANONICAL[field]
+      const next = current.filter((f) => FIELD_TO_CANONICAL[f] !== canonical)
+      next.push(field)
+      return next.length > 2 ? next.slice(next.length - 2) : next
+    })
   }
 
   function setFieldValue(field: string, value: string) {
@@ -264,52 +306,66 @@ export default function MruCalculator() {
     }
   }
 
-  const earlyViolations = unknown ? checkMruConstraints(known) : []
+  const earlyViolations = unknowns.length > 0 ? checkMruvConstraints(known) : []
 
-  let result: number | null = null
+  let results: Record<string, number> | null = null
   let hint: string | null = null
   let error: string | null = null
 
-  if (!unknown) {
-    hint = 'Elegí qué variable querés calcular.'
+  if (unknowns.length === 0) {
+    hint = 'Elegí qué variable (o variables) no conocés.'
   } else if (earlyViolations.length > 0) {
     error = earlyViolations.join(' ')
   } else if (missingField) {
     hint = 'Completá todos los demás datos para calcular.'
   } else {
     try {
-      const computed = solveMru(posMode, timeMode, unknown, known)
-      if (!Number.isFinite(computed)) {
+      const computed = solveMruvMulti(posMode, timeMode, velMode, unknowns, known)
+      if (!Object.values(computed).every(Number.isFinite)) {
         error = 'No se puede calcular con estos datos (revisá que no haya una división por cero).'
       } else {
-        const violations = checkMruConstraints({ ...known, [unknown]: computed })
+        const violations = checkMruvConstraints({ ...known, ...computed })
+        const consistencyError =
+          unknowns.length === 1
+            ? checkMruvSingleConsistency(posMode, timeMode, velMode, unknowns[0], known, computed[unknowns[0]])
+            : null
         if (violations.length > 0) {
           error = violations.join(' ')
+        } else if (consistencyError) {
+          error = consistencyError
         } else {
-          result = computed
+          results = computed
         }
       }
-    } catch {
-      error = 'No se pudo calcular con estos datos.'
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'No se pudo calcular con estos datos.'
     }
   }
 
-  const template = unknown ? getMruFormulaTemplate(posMode, timeMode, unknown) : undefined
-  const fullValues = result !== null && unknown ? { ...known, [unknown]: result } : null
-  const positionPlot = fullValues ? mruPositionPlot(posMode, timeMode, fullValues) : null
-  const positionMarkers = fullValues ? mruMarkers(posMode, timeMode, fullValues) : null
-  const velocityPlot = fullValues ? mruVelocityPlot(timeMode, fullValues) : null
-  const velocityMarkers = fullValues ? mruVelocityMarkers(timeMode, fullValues) : null
-  const resultUnit = unknown ? getFieldUnit(unknown) : null
-  const displayResult =
-    result !== null && unknown && resultUnit ? fromSI(result, resultUnit, FIELD_UNIT_KIND[unknown]) : null
+  const singleTemplate =
+    unknowns.length === 1 ? getMruvFormulaTemplate(posMode, timeMode, velMode, unknowns[0]) : undefined
+  const systemEquations = unknowns.length === 2 ? getMruvSystemEquations(timeMode, velMode) : undefined
+
+  const fullValues = results ? { ...known, ...results } : null
+  const positionPlot = fullValues ? mruvPositionPlot(posMode, timeMode, fullValues) : null
+  const positionMarkers = fullValues ? mruvMarkers(posMode, timeMode, fullValues) : null
+  const velocityPlot = fullValues ? mruvVelocityPlot(timeMode, fullValues) : null
+  const velocityMarkers = fullValues ? mruvVelocityMarkers(timeMode, fullValues) : null
+  const accelerationPlot = fullValues ? mruvAccelerationPlot(timeMode, fullValues) : null
+  const accelerationMarkers = fullValues ? mruvAccelerationMarkers(timeMode, fullValues) : null
+
+  const resultUnits = unknowns.map((field) => getFieldUnit(field))
+  const displayResults =
+    results && unknowns.every((field) => Number.isFinite(results![field]))
+      ? unknowns.map((field, i) => fromSI(results![field], resultUnits[i], FIELD_UNIT_KIND[field]))
+      : null
 
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-neutral-200 p-5 dark:border-neutral-700">
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Elegí cómo se van a tratar las variables de posición y de tiempo: por sus valores inicial y final, o
-          directamente por su variación.
+          Elegí cómo se van a tratar las variables de posición, tiempo y velocidad: por sus valores inicial y
+          final, o directamente por su variación.
         </p>
         <div className="mt-3 flex flex-wrap gap-6">
           <div>
@@ -348,17 +404,45 @@ export default function MruCalculator() {
               ]}
             />
           </div>
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300">Velocidad</p>
+            <ModeToggle
+              value={velMode}
+              onChange={handleVelModeChange}
+              options={[
+                {
+                  value: 'endpoints',
+                  label: (
+                    <>
+                      <InlineMath math="v_0" /> y <InlineMath math="v_f" />
+                    </>
+                  ),
+                },
+                {
+                  value: 'delta',
+                  label: (
+                    <>
+                      <InlineMath math="v_0" /> y <InlineMath math="\Delta v" />
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
       <div className="rounded-lg border border-neutral-200 p-5 dark:border-neutral-700">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">¿Qué variable querés calcular?</p>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          ¿Qué variable (o variables) no conocés? El MRUV tiene 2 ecuaciones, así que en algunos casos se
+          pueden calcular hasta 2 incógnitas a la vez.
+        </p>
         <div className="mt-3">
-          <TargetPicker fields={activeFields} selected={unknown} onSelect={setUnknown} />
+          <UnknownPicker fields={activeFields} selected={unknowns} onToggle={toggleUnknown} />
         </div>
       </div>
 
-      {unknown && (
+      {unknowns.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
             Completá los siguientes datos
@@ -381,17 +465,19 @@ export default function MruCalculator() {
           <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
             Resultado
           </h2>
-          {unknown && resultUnit && (
+          {unknowns.length > 0 && (
             <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-600 dark:text-neutral-400">
-              <label className="flex items-center gap-1.5">
-                Unidad
-                <UnitSelect
-                  kind={FIELD_UNIT_KIND[unknown]}
-                  value={resultUnit}
-                  onChange={(unit) => setFieldUnit(unknown, unit)}
-                  ariaLabel="Unidad del resultado"
-                />
-              </label>
+              {unknowns.map((field) => (
+                <label key={field} className="flex items-center gap-1.5">
+                  Unidad (<InlineMath math={FIELD_SYMBOLS_TEX[field]} />)
+                  <UnitSelect
+                    kind={FIELD_UNIT_KIND[field]}
+                    value={getFieldUnit(field)}
+                    onChange={(unit) => setFieldUnit(field, unit)}
+                    ariaLabel={`Unidad del resultado (${FIELD_SYMBOLS_PLAIN[field]})`}
+                  />
+                </label>
+              ))}
               <label className="flex items-center gap-1.5">
                 Decimales
                 <select
@@ -410,22 +496,22 @@ export default function MruCalculator() {
             </div>
           )}
         </div>
-        {result !== null && unknown && displayResult !== null ? (
+        {results && displayResults ? (
           <div className="mt-3 space-y-4">
-            {template && (
+            {singleTemplate && (
               <>
                 <div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">Fórmula</p>
                   <p className="mt-1 text-neutral-700 dark:text-neutral-300">
-                    <InlineMath math={renderMruFormula(template, (field) => FIELD_SYMBOLS_TEX[field])} />
+                    <InlineMath math={renderMruvFormula(singleTemplate, (field) => FIELD_SYMBOLS_TEX[field])} />
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">Reemplazando los valores</p>
                   <p className="mt-1 text-neutral-700 dark:text-neutral-300">
                     <InlineMath
-                      math={renderMruFormula(
-                        template,
+                      math={renderMruvFormula(
+                        singleTemplate,
                         (field) => `${formatSubstitutedNumber(known[field])}\\,${FIELD_UNITS_TEX[field]}`,
                       )}
                     />
@@ -436,14 +522,28 @@ export default function MruCalculator() {
                 </div>
               </>
             )}
-            <div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{FIELD_LABELS[unknown]}</p>
-              <p className="mt-1 text-2xl font-semibold text-sky-700 dark:text-sky-300">
-                <InlineMath
-                  math={`${FIELD_SYMBOLS_TEX[unknown]} = ${formatNumber(displayResult, decimals)}\\ ${unitToLatex(resultUnit!)}`}
-                />
-              </p>
-            </div>
+            {systemEquations && (
+              <div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Sistema de 2 ecuaciones (2 incógnitas)
+                </p>
+                {systemEquations.map((equation, index) => (
+                  <p key={index} className="mt-1 text-neutral-700 dark:text-neutral-300">
+                    <InlineMath math={renderMruvFormula(equation, (field) => FIELD_SYMBOLS_TEX[field])} />
+                  </p>
+                ))}
+              </div>
+            )}
+            {unknowns.map((field, index) => (
+              <div key={field}>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">{FIELD_LABELS[field]}</p>
+                <p className="mt-1 text-2xl font-semibold text-sky-700 dark:text-sky-300">
+                  <InlineMath
+                    math={`${FIELD_SYMBOLS_TEX[field]} = ${formatNumber(displayResults[index], decimals)}\\ ${unitToLatex(resultUnits[index])}`}
+                  />
+                </p>
+              </div>
+            ))}
           </div>
         ) : (
           <p
@@ -487,6 +587,26 @@ export default function MruCalculator() {
               yLabel="v\ (\text{m/s})"
               valueLabel="Velocidad"
               valueUnit="m/s"
+            />
+          </div>
+        </div>
+      )}
+
+      {accelerationPlot && accelerationMarkers && (
+        <div className="rounded-lg border border-neutral-200 p-5 dark:border-neutral-700">
+          <h2 className="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
+            Gráfico
+          </h2>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">Aceleración en función del tiempo</p>
+          <div className="mt-3">
+            <FunctionChart
+              fn={accelerationPlot.fn}
+              domain={accelerationPlot.domain}
+              markers={accelerationMarkers}
+              color="red"
+              yLabel="a\ (\text{m/s}^2)"
+              valueLabel="Aceleración"
+              valueUnit="m/s²"
             />
           </div>
         </div>

@@ -15,3 +15,19 @@ body {
   margin: 0;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
 }
+
+/*
+ * JSXGraph's own stylesheet can't be imported (its package exports don't expose
+ * subpaths) and mostly styles features we disable anyway. It also no longer
+ * tags the container with .jxgbox, so these rules target our own class: hide
+ * the leftover navigation/infobox nodes it appends regardless of the
+ * showNavigation/showInfobox attributes, and keep tick labels unselectable.
+ */
+.function-chart-board :is(.JXG_navigation, .JXGinfobox) {
+  display: none;
+}
+
+.function-chart-board svg text {
+  cursor: default;
+  user-select: none;
+}

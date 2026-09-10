@@ -22,7 +22,7 @@ export const calculators: Calculator[] = [
     sectionId: 'cinematica',
     title: 'MRUV',
     description: 'Movimiento Rectilíneo Uniformemente Variado: posición, velocidad, aceleración y tiempo.',
-    available: false,
+    available: true,
     formulaIds: ['mruv-velocidad', 'mruv-posicion', 'ecuacion-complementaria'],
   },
   {

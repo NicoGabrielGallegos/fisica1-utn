@@ -40,7 +40,7 @@ export default function CalculatorPage() {
   const calculatorComponent = calculatorComponentFor(section.id, calculator.id)
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="px-6 py-10">
       <Breadcrumb
         items={[
           { label: 'Unidades', to: '/' },
@@ -49,7 +49,12 @@ export default function CalculatorPage() {
         ]}
       />
 
-      <div className="mt-6 flex flex-col gap-8 md:flex-row">
+      {/* No outer max-width/mx-auto here on purpose: the drawer sits right after
+          the page padding, hugging the screen's left edge, while the main
+          content is centered within whatever space is left (see the inner
+          max-w-4xl wrapper below) instead of the whole row being centered as
+          one block. */}
+      <div className="mt-6 flex flex-col gap-8 md:flex-row md:items-start">
         <CalculatorDrawer
           sectionId={section.id}
           activeCalculatorId={calculator.id}
@@ -57,14 +62,16 @@ export default function CalculatorPage() {
           formulas={calculatorFormulas}
         />
 
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-            {calculator.title}
-          </h1>
-          <p className="mt-2 text-neutral-600 dark:text-neutral-400">{calculator.description}</p>
+        <div className="flex min-w-0 flex-1 justify-center">
+          <div className="w-full max-w-4xl">
+            <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+              {calculator.title}
+            </h1>
+            <p className="mt-2 text-neutral-600 dark:text-neutral-400">{calculator.description}</p>
 
-          <div className="mt-8">
-            <CalculatorBody component={calculatorComponent} />
+            <div className="mt-8">
+              <CalculatorBody component={calculatorComponent} />
+            </div>
           </div>
         </div>
       </div>

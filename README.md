@@ -9,7 +9,7 @@ Sitio para resolver problemas de Física 1 (UTN FRRo): cinemática, dinámica y 
 - [React Router](https://reactrouter.com/) para la navegación entre unidades
 - [mathjs](https://mathjs.org/) para cálculos numéricos y manejo de unidades físicas
 - [KaTeX](https://katex.org/) + [react-katex](https://github.com/talyssonoc/react-katex) para renderizar ecuaciones
-- [Recharts](https://recharts.org/) para gráficos (posición-tiempo, velocidad-tiempo, etc.)
+- [JSXGraph](https://jsxgraph.org/) para graficar funciones (posición-tiempo, velocidad-tiempo, etc.) con desplazamiento y zoom
 - [oxlint](https://oxc.rs/) como linter
 
 ## Desarrollo

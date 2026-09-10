@@ -36,7 +36,7 @@ export default function FormulaPage() {
   const sectionCalculators = calculatorsForSection(section.id)
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="px-6 py-10">
       <Breadcrumb
         items={[
           { label: 'Unidades', to: '/' },
@@ -45,21 +45,30 @@ export default function FormulaPage() {
         ]}
       />
 
-      <div className="mt-6 flex flex-col gap-8 md:flex-row">
+      {/* No outer max-width/mx-auto here on purpose: the drawer sits right after
+          the page padding, hugging the screen's left edge, while the main
+          content is centered within whatever space is left (see the inner
+          max-w-4xl wrapper below) instead of the whole row being centered as
+          one block. */}
+      <div className="mt-6 flex flex-col gap-8 md:flex-row md:items-start">
         <CalculatorDrawer sectionId={section.id} calculators={sectionCalculators} />
 
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{formula.name}</h1>
+        <div className="flex min-w-0 flex-1 justify-center">
+          <div className="w-full max-w-4xl">
+            <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{formula.name}</h1>
 
-          <div className="mt-4 rounded-lg border border-neutral-200 p-6 text-center dark:border-neutral-700">
-            <BlockMath math={formula.latex} />
-          </div>
+            <div className="mt-4 rounded-lg border border-neutral-200 p-6 text-center dark:border-neutral-700">
+              <BlockMath math={formula.latex} />
+            </div>
 
-          <p className="mt-4 text-neutral-600 dark:text-neutral-400">{formula.description}</p>
+            <p className="mt-4 text-neutral-600 dark:text-neutral-400">{formula.description}</p>
 
-          <h2 className="mt-10 text-lg font-semibold text-neutral-900 dark:text-neutral-100">Demostración</h2>
-          <div className="mt-4">
-            <DerivationBody component={derivation} />
+            <h2 className="mt-10 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+              Demostración
+            </h2>
+            <div className="mt-4">
+              <DerivationBody component={derivation} />
+            </div>
           </div>
         </div>
       </div>
